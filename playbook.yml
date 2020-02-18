@@ -11,7 +11,7 @@
       ignore_errors: True
    
     - name: Read device information (always use unit when probing)
-      parted: /dev/{{ harddisk.stdout }} unit=MiB
+      parted: device=/dev/{{ harddisk.stdout }} unit=MiB
       register: harddisk_info
      
     - name: Remove all partitions from disk
