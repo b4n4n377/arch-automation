@@ -21,9 +21,17 @@
         state: absent
       loop: '{{ harddisk_info.partitions }}'
    
-    - name: Create the book partition, size 250MB
+    - name: Create the boot partition, size 250MB
       parted:
         device: /dev/{{ harddisk.stdout }}
         number: 1
         state: present
         part_end: 250MiB
+     
+    - name: Create the root partition
+      parted:
+        device: /dev/{{ harddisk.stdout }}
+        number: 2
+        state: present
+  
+     
