@@ -33,5 +33,6 @@
         device: /dev/{{ harddisk.stdout }}
         number: 2
         state: present
+        part_start: 250MiB
   
      
