@@ -10,7 +10,7 @@
       register: harddisk
       ignore_errors: True
    
-    - name: Create a new primary partition with a size of 1GiB
+    - name: Create the book partition, size 250MB
       parted:
         device: /dev/{{ harddisk.stdout }}
         number: 1
