@@ -1,0 +1,18 @@
+---
+
+- hosts: localhost 
+  name: Arch base install 
+  gather_facts: false
+  tasks:
+
+    - name: Get device name of hard disk
+      shell: lsblk |grep disk |awk '{print $1}'
+      register: harddisk
+      ignore_errors: True
+   
+    - name: Create a new primary partition with a size of 1GiB
+      parted:
+        device: /dev/{{ harddisk.stdout }}
+        number: 1
+        state: present
+        part_end: 250MB
