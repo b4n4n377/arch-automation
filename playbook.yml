@@ -11,19 +11,19 @@
       ignore_errors: True
    
     - name: Read device information (always use unit when probing)
-      parted: '/dev/{{ harddisk.stdout }}' unit=MiB
+      parted: /dev/{{ harddisk.stdout }} unit=MiB
       register: harddisk_info
      
     - name: Remove all partitions from disk
       parted:
-        device: '/dev/{{ harddisk.stdout }}'
+        device: /dev/{{ harddisk.stdout }}
         number: '{{ item.num }}'
         state: absent
         loop: '{{ harddisk_info.partitions }}'
    
     - name: Create the book partition, size 250MB
       parted:
-        device: '/dev/{{ harddisk.stdout }}'
+        device: /dev/{{ harddisk.stdout }}
         number: 1
         state: present
         part_end: 250MiB
