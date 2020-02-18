@@ -15,4 +15,4 @@
         device: /dev/{{ harddisk.stdout }}
         number: 1
         state: present
-        part_end: 250MB
+        part_end: 250MiB
