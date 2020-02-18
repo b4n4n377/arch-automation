@@ -19,7 +19,7 @@
         device: /dev/{{ harddisk.stdout }}
         number: '{{ item.num }}'
         state: absent
-        loop: '{{ harddisk_info.partitions }}'
+      loop: '{{ harddisk_info.partitions }}'
    
     - name: Create the book partition, size 250MB
       parted:
