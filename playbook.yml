@@ -10,9 +10,29 @@
       register: harddisk
       ignore_errors: True
    
-    - name: Create a new primary partition with a size of 1GiB
+    - name: Read device information (always use unit when probing)
+      parted: device=/dev/{{ harddisk.stdout }} unit=MiB
+      register: harddisk_info
+     
+    - name: Remove all partitions from disk
+      parted:
+        device: /dev/{{ harddisk.stdout }}
+        number: '{{ item.num }}'
+        state: absent
+      loop: '{{ harddisk_info.partitions }}'
+   
+    - name: Create the boot partition, size 250MB
       parted:
         device: /dev/{{ harddisk.stdout }}
         number: 1
         state: present
-        part_end: 250MB
+        part_end: 250MiB
+     
+    - name: Create the root partition
+      parted:
+        device: /dev/{{ harddisk.stdout }}
+        number: 2
+        state: present
+        part_start: 250MiB
+  
+     
