@@ -1,4 +1,4 @@
 ---
 - hosts: localhost
   roles:
-  - /roles/arch-automation
+  - ./roles/arch-automation
