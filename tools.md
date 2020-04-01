@@ -9,3 +9,4 @@
 | WM                 | Sway                   |
 | Terminal           | Alacritty, Terminator  |
 | Editor             | Neovim, leafpad, code  |
+| Shell              | Fish                   |
