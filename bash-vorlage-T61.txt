@@ -1,0 +1,370 @@
+
+	Tastaturbelegung:
+	################
+	loadkeys de
+	loadkeys de-latin1
+
+	Festplattenbelegung [300MB BOOT, REST ROOT]
+	############################################
+	lsblk
+	gdisk/dev/sda
+	o
+	n
+	p
+	1
+	ENTER
+	+250mb
+	n
+	p
+	2
+	ENTER
+	ENTER
+	ENTER
+	p
+	w
+	
+	LUKS vorbereiten
+	############################################
+	modprobe dm-mod 
+	cryptsetup --cipher aes-xts-plain64 --key-size 512 --hash sha512 luksFormat /dev/sda2
+	cryptsetup open --type luks /dev/sda2 cryptroot
+
+
+	mkfs.ext4 -L BOOT /dev/sda1
+	mkfs.btrfs -f -L ROOT /dev/mapper/cryptroot
+	
+	mount /dev/mapper/cryptroot /mnt
+	cd /mnt
+
+	btrfs sub create @
+	btrfs sub create @home
+	btrfs sub create @pkg
+	btrfs sub create @snapshots
+	
+	ls
+	cd /
+	umount /mnt
+
+	mount -o noatime,compress=lzo,space_cache,ssd,subvol=@ /dev/mapper/cryptroot /mnt
+	
+	mkdir -p /mnt/boot
+	mkdir -p /mnt/home
+	mkdir -p /mnt/var/cache/pacman/pkg
+	mkdir -p /mnt/.snapshots
+	mkdir -p /mnt/btrfs
+	
+	mount -o noatime,compress=lzo,space_cache,ssd,subvol=@home /dev/mapper/cryptroot /mnt/home
+	mount -o noatime,compress=lzo,space_cache,ssd,subvol=@pkg /dev/mapper/cryptroot /mnt/var/cache/pacman/pkg
+	mount -o noatime,compress=lzo,space_cache,ssd,subvol=@.snapshots /dev/mapper/cryptroot /mnt/.snapshots
+	mount -o noatime,compress=lzo,space_cache,ssd,subvolid=5 /dev/mapper/cryptroot /mnt/btrfs
+	mount /dev/sda1 /mnt/boot
+	sync
+
+	Bootstrap the system
+	############################################
+	pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion
+	
+	fstab
+	############################################
+	genfstab -Lp /mnt >> /mnt/etc/fstab
+	vi /mnt/etc/fstab
+
+	arch-chroot /mnt
+
+	echo archbox > /etc/hostname
+	echo LANG=de_DE.UTF-8 > /etc/locale.conf
+	echo LANGUAGE=de_DE >> /etc/locale.conf
+	echo KEYMAP=de-latin1-nodeadkeys > /etc/vconsole.conf
+	rm /etc/localtime
+	ln -s /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+	nano /etc/locale.gen
+	de...UTF8 auskommentieren
+	locale-gen
+
+	nano -w /etc/pacman.conf
+	multilib aktivieren
+	pacman -Sy
+
+	Kernel HOOKS
+	############################################
+	nano /etc/mkinitcpio.conf
+	HOOKS="base udev autodetect modconf block encrypt filesystems keyboard"
+
+	INITRAMFS erzeugen
+	############################################
+	mkinitcpio -p linux
+	
+	passwd root
+	
+	pacman -Sy grub	
+	grub-install --target=i386-pc /dev/sda
+
+	nano /etc/default/grub
+	GRUB_DEFAULT=0
+	GRUB_TIMEOUT=5
+	GRUB_DISTRIBUTOR="Arch"
+	GRUB_CMDLINE_LINUX_DEFAULT="quiet"
+	GRUB_CMDLINE_LINUX=""
+	GRUB_ENABLE_CRYPTODISK=y
+
+	grub-install --target=i386-pc /dev/sda
+	nano /etc/default/grub
+	GRUB_DEFAULT=0
+	GRUB_TIMEOUT=5
+	GRUB_DISTRIBUTOR="Arch"
+	GRUB_CMDLINE_LINUX_DEFAULT="quiet"
+	GRUB_CMDLINE_LINUX=""cryptdevice=/dev/sda2:cryptroot""
+	ENABLE_CRYPTODISK=y 
+	
+	grub-mkconfig -o /boot/grub/grub.cfg
+	sync
+
+	Oberfläche
+	############################################
+	dhcpd enp0s25
+	pacman -S xorg-server xorg-xinit xorg-utils xorg-server-utils
+	pacman -S xf86-video-intel
+	pacman -S xfce4 xfce4-goodies
+	
+	pacman -S lightdm lightdm-gtk-greeter
+	pacman -S networkmanager network-manager-applet nm-connection-editor
+
+	pacman -S acpid ntp dbus avahi cups cronie
+
+	systemctl enable acpid
+	systemctl enable ntpd
+	systemclt enable avahi-daemon
+	systemctl enable cups
+	systemctl enable cronie
+	
+	ntpd -gq
+	date
+
+	systemctl enable lightdm.service
+	systemctl enable NetworkManager
+	
+	useradd -m -g users -G wheel,audio,video -s /bin/bash sandy
+	passwd sandy
+
+	pacman -S chromium firefox firefox-i18n-de thunderbird thunderbird-i18n-de libreoffice-fresh libreoffice-de hunspell-de
+
+	pacman -S pulseaudio alsa-tools alsa-utils pulseaudio-alsa pavucontrol xfce4-pulseaudio-plugin
+
+	pacman -S qt4 vlc mpv audacious
+	
+	pacman -S noto-fonts
+
+	pacman -S arc-gtk-theme
+	
+	pacman -S arc-icon-theme
+
+
+
+
+
+	--> AB HIER WEITERMACHEN
+
+
+
+
+
+
+
+
+
+	Sudo 
+	############################################
+	EDITOR=nano visudo		/etc/sudoers
+	%wheel ALL=(ALL) ALL
+	sudo su
+	passwd -l root
+	
+	Screenfetch
+	#############################################
+	sudo pacman -S screenfetch
+	sudo echo 'screenfetch' >> ~/.bashrc
+
+
+	BTRFS Snapshots und Rollback
+	############################################
+	sudo su
+	btrfs sub snap / /.snapshots/TESTING
+
+	cd /boot/loader/entries
+	nano -w arch.conf
+	edit: 	subvol=@ --> subvol=@snapshots/TESTING
+	
+	nano -w /.snapshots/TESTING/etc/fstab
+	edit:	/ ...subvol=@ --> subvol=@snapshots/TESTING
+		subvolid überall entfernen, subvol= reicht aus
+	
+	reboot
+
+	mount 			prüfen ob Snapshot gemountet
+
+	
+	sudo su
+	btrfs sub list /btrfs/
+	btrfs sub snap / /.snapshots/STABLE
+	btrfs sub snap / /.snapsnots/OLDSTABLE
+
+	cd /boot/
+	cp vmlinuz-linux vmlinuz-linux-stable
+	cp vmlinuz-linux vmlinuz-linux-oldstable
+	
+	cp initramfs-linux.img initramfs-linux-stable.img
+	cp initramfs-linux.img initramfs-linux-oldstable.img
+
+	cd /boot/loader/entries
+	cp arch.conf barch.conf				/werden sortiert im Bootmenue
+	cp arch.conf carch.conf
+		
+	nano barch.conf und carch.conf anpassen (title, linux, initramfs, options)
+
+	nano -w /.snapshots/STABLE/etc/fstab		/root-mount anpassen auf STABLE
+	nano -w /.snapshots/OLDSTABLE/etc/fstab		/root-mount anpassen auf OLDSTABLE
+
+	alle drei Menueeinträge mal booten, mit 'mount' überprüfen
+
+	Script kopieren und ausführbar machen
+
+
+	USB automisch mounten
+	##################################################
+	﻿pacman -S gvfs gvfs-mtp gvfs-nfs gvfs-smb ntfs-3g exfat-utils f2fs-tools ifuse mtpfs
+
+	LTS Kernel installieren
+	#######################h###########################
+	sudo pacman -S linux-lts
+	cd /boot/ anpassen
+	cd /loader/entries
+
+
+	## copy on write für Vms deaktivieren: ##
+	#########################################
+	mkdir /home/mccool/VMs
+	lsattr
+	chattr +C /home/mccool/VMs
+	lsattr
+
+
+	## RAMDISK Browsercache etc. ##
+	##########################################
+	nano /etc/fstab	
+	tmpfs	/home/mccool/.cache	tmpfs	noatime,nodev,nosuid,size=2G 0 0
+
+
+	## BTRF Usage beobachten und mit df -TH vergleichen ##
+	######################################################
+	sudo btrfs fi usage  /btrfs	
+
+
+	## TRIM mit LUKS aktivieren
+	################################################
+	/boot/loader/entries/arch.conf
+	options ro cryptdevice=/dev/sda2:cryptroot:allow-discards rd.luks.options=discard root=/dev/mapper/cryptroot rootflags=subvol=@snapshots/TESTING rw
+	/etc/fstab discard 
+	test: fstrim 
+
+	# FEHLER FINDEN - SCRUP als Service planen #
+	#############################################
+	sudo systemctl enable btrfs-scrub@btrfs.timer
+	sudo systemctl start btrfs-scrub@btrfs.service
+
+	# TRIM regelmäßig durchführen 
+	##############################
+	sudo systemctl enable fstrim.timer
+
+	# Backup mit Snapshots to usb
+	#################################
+	sudo mkdir /home/.home_snapshots
+	cd /btrfs
+	sudo btrfs sub create @home_snapshots
+	/etc/fstab:
+	/dev/mapper/cryptroot 	/home/.home_snapshots	btrfs         rw,noatime,compress=lzo,ssd,space_cache,subvol=@home_snapshots    0 0
+	
+	Icons:
+	#################################
+	[mccool@AFFNB001 ~]$ mkdir .AUR
+	[mccool@AFFNB001 ~]$ cd .AUR/
+	[mccool@AFFNB001 .AUR]$ git clone https://aur.archlinux.org/vibrancy-colors.git
+	[mccool@AFFNB001 .AUR]$ cd vibrancy-colors/
+	[mccool@AFFNB001 vibrancy-colors]$ makepkg -r
+	
+	Screenfetch
+	##################################
+	[mccool@AFFNB001 vibrancy-colors]$ sudo pacman -S screenfetch
+	[mccool@AFFNB001 ~]$ echo 'screenfetch' >> /home/mccool/.bashrc 
+	
+	
+	
+	# KVM #############################
+	
+	
+	# Conky ###########################
+	sudo pacman -S conky
+	$ mkdir -p ~/.config/conky
+	$ conky -C > ~/.config/conky/conky.conf
+	
+	#pacman
+	###################################
+	Serverlist /etc/pacman.d/mirrorlist
+	
+	suchen: 	pacman -Ss htop
+			pacman -Si htop
+	
+	checkupdates
+	
+	paccache -r
+
+	###### XFCE CUSTOMIZING #############
+
+	Desktopsymbole:			Rechtsklick -> Schreibtischeinstellungen -> Symbole.
+	
+	Leiste oben:			Rechsklick -> Leiste -> Leisteneinstlelungen -> Erscheinungsbild
+					Alpha 90, Betreten 95, Verlassen 60
+
+					Leiste 2 identisch: 90, 95, 60
+					Leiste intelligent verbergen	
+	
+	Benutzername oben rechts:	Rechtsklick, Eigenschaften
+					Trennelemente entfernen, sonst nach belieben
+
+		
+
+	Leiste oben:			Leisteneinstellungen, neue Elemente hinzufügen, Whisker Menue
+					Leisteneinstellungen, Objekte, Whisker Menue ganz nach links, altes Menue entfernen
+	
+					In den Eigenschaften des Whisker Menues, verhalten,  alle Eigenschaften aktivieren
+					Unter Aussehen eine Deckkraft von 90, unter Befehle alles entfernen, was nicht installiert ist
+
+					'Anwendungsbeschreibungen anzeigen' entfernen
+
+ 
+	Feineinstellungen Fensterverwaltung:	Composite -> Zeichnen mit der Vertikalen Austastlücke aktivieren (vsync)
+						Deckkfraft beim Verschieben etwas nach unten
+
+	
+	Whisker Menue: 			Terminal hoch in die Leiste schieben. (Starter anlegen).
+
+
+	Terminal: 			Rechtsklick, Eigenschaften, Bleistift für bearbeiten. Befehl ändern: xfce-terminal --drop-down
+
+
+	Leisteneinstellungen: 		Objekte, Terminal nach oben neben das Menue. Weitere Starter hinzufügen.
+
+	
+	Arbeitsflächen oben rechts: 	Arbeitsflächeneinstellungen: 9 (im Gitter angeordnet)
+					Eigenschaften : 3 Zeilen
+
+	
+	Terminal öffnen: 		unten rechts auf den Werkzeugschlüsse. Breite 100, Deckkraft: 80
+					Fenster offen lassen, wenn Fokus verliert
+					Fenster im Vordergrund halten
+							
+	
+	Einstellungen Tastatur: 	Tastaturbelegung auf deutsch umstellen
+
+
+
+usb devices vices autom
