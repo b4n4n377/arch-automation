@@ -1,0 +1,141 @@
+
+# ISO herunterladen, mounten, Inhalt kopieren
+###############################################
+
+sudo mkdir /mnt/archiso
+sudo mount -t iso9660 -o loop ~/Downloads/archlinux-2019.07.01-x86_64.iso /mnt/archiso/
+cp -a /mnt/archiso ~/customiso
+cd ~/customiso/arch/x86_64/
+
+# airootfs.sfs entpacken / unsquash
+###############################################
+
+sudo unsquashfs airootfs.sfs
+
+chroot in das System
+###############################################
+
+sudo arch-chroot squashfs-root /bin/bash
+
+Dinge anpassen
+###############################################
+
+sudo nano /etc/hostname
+systemctl enable sshd
+mkdir /root/.ssh/
+nano /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+exit
+
+airrootfs.sfs neu erstellen
+###############################################
+rm airootfs.sfs
+sudo mksquashfs squashfs-root airootfs.sfs
+sha512sum airootfs.sfs > airootfs.sha512
+
+
+iso neu erstellen (Label beibehalten !!!)
+###############################################
+cd ~/customiso
+genisoimage -l -r -J -V "ARCH_201907" -b isolinux/isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table -c isolinux/boot.cat -o ../arch-custom.iso ./
+
+
+
+Von ISO booten - Arch Installation
+###############################################
+
+
+
+sgdisk -o /dev/$(lsblk | grep disk | awk '{print $1}') 
+sgdisk --new=1:0:+250mb -t 1:ef00  /dev/$(lsblk | grep disk | awk '{print $1}') 
+sgdisk -N 2 /dev/$(lsblk | grep disk | awk '{print $1}') 
+sgdisk -p /dev/$(lsblk | grep disk | awk '{print $1}')
+
+mkfs.vfat -F 32 -n EFI /dev/$(lsblk | grep disk | awk '{print $1}')1
+mkfs.btrfs -f -L ROOT /dev/$(lsblk | grep disk | awk '{print $1}')2
+
+mount /dev/$(lsblk | grep disk | awk '{print $1}')2 /mnt
+cd /mnt
+
+btrfs sub create @
+btrfs sub create @home
+btrfs sub create @pkg
+btrfs sub create @snapshots
+
+ls
+cd /
+umount /mnt
+
+mount -o noatime,compress=lzo,space_cache,ssd,subvol=@ /dev/$(lsblk | grep disk | awk '{print $1}')2 /mnt
+
+mkdir -p /mnt/boot
+mkdir -p /mnt/home
+mkdir -p /mnt/var/cache/pacman/pkg
+mkdir -p /mnt/.snapshots
+mkdir -p /mnt/btrfs
+
+mount -o noatime,compress=lzo,space_cache,ssd,subvol=@home /dev/$(lsblk | grep disk | awk '{print $1}')2 /mnt/home
+mount -o noatime,compress=lzo,space_cache,ssd,subvol=@pkg /dev/$(lsblk | grep disk | awk '{print $1}')2 /mnt/var/cache/pacman/pkg
+mount -o noatime,compress=lzo,space_cache,ssd,subvol=@snapshots /dev/$(lsblk | grep disk | awk '{print $1}')2 /mnt/.snapshots
+mount -o noatime,compress=lzo,space_cache,ssd,subvolid=5 /dev/$(lsblk | grep disk | awk '{print $1}')2 /mnt/btrfs
+mount /dev/$(lsblk | grep disk | awk '{print $1}')1 /mnt/boot
+sync
+
+df -Th | grep $(lsblk | grep disk | awk '{print $1}')
+
+pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion
+
+genfstab -Lp /mnt >> /mnt/etc/fstab
+
+cat /mnt/etc/fstab
+
+arch-chroot /mnt
+
+echo archbox > /etc/hostname
+echo LANG=de_DE.UTF-8 > /etc/locale.conf
+echo LANGUAGE=de_DE >> /etc/locale.conf
+echo KEYMAP=de-latin1-nodeadkeys > /etc/vconsole.conf
+rm /etc/localtime
+ln -s /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+
+
+sed -i '/de_DE.UTF-8/s/^#//g' /etc/locale.gen
+locale-gen
+
+echo '' >> /etc/pacman.conf
+echo '[multilib]' >> /etc/pacman.conf
+echo 'Include = /etc/pacman.d/mirrorlist' >> /etc/pacman.conf
+
+pacman -Sy
+
+mkinitcpio -p linux
+
+echo -e "Blumenstrauß\nBlumenstrauß" | passwd root
+
+bootctl --path=/boot install
+
+
+
+rm /boot/loader/loader.conf 
+echo 'default arch' >> /boot/loader/loader.conf
+echo 'timeout 4' >> /boot/loader/loader.conf
+echo 'editor 0' >> /boot/loader/loader.conf
+
+echo 'title Arch Linux Btrfs' >> /boot/loader/entries/arch.conf
+echo 'linux /vmlinuz-linux' >> /boot/loader/entries/arch.conf
+echo 'initrd /initramfs-linux.img' >> /boot/loader/entries/arch.conf
+echo 'options root=LABEL=ROOT rootflags=subvol=@ rw' >> /boot/loader/entries/arch.conf
+
+pacman -S networkmanager ntp cronie --noconfirm
+
+systemctl enable NetworkManager
+systemctl enable ntpd
+systemctl enable cronie
+systemctl enable btrfs-scrub@btrfs.timer
+systemctl start btrfs-scrub@btrfs.service
+
+ntpd -gq
+date
+
+
+
