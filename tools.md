@@ -7,5 +7,5 @@
 | Boot Loader        | systemd-boot           |
 | Wirless            | iwd                    |
 | WM                 | Sway                   |
-| Terminal           | Alacritty              |
-| Editor             | Neovim                 |
+| Terminal           | Alacritty, Terminator  |
+| Editor             | Neovim, leafpad, code  |
