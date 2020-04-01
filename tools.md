@@ -2,7 +2,7 @@
 | Anwendungszweck    | Tool                   |
 |--------------------|------------------------|
 | OS                 | Arch Linux (gpt, UEFI) |
-| Paritionieren      | gdisk                  |
+| Partitionieren     | gdisk                  |
 | Network Management | systemd-networkd       |
 | Boot Loader        | systemd-boot           |
 | Wirless            | iwd                    |
