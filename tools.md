@@ -10,3 +10,5 @@
 | Terminal           | Alacritty, Terminator  |
 | Editor             | Neovim, leafpad, code  |
 | Shell              | Fish                   |
+| Privileges         | opendoas               |
+| GPU (Intel)        | mesa,intel-media-driver|
