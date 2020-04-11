@@ -12,3 +12,4 @@
 | Shell              | Fish                   |
 | Privileges         | opendoas               |
 | GPU (Intel)        | mesa,intel-media-driver|
+| Kernel             | linux-zen              |
