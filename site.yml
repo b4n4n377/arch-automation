@@ -203,7 +203,7 @@
 
     ### Run pacstrap
     - name: Run pacstrap
-      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch
+      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch netctl
       tags:
         - pacstrap
 
@@ -252,23 +252,23 @@
       tags:
         - hostname
     
-    #- name: Setup netctl
-    #  block:
-    #    - name: Create netctl profile for wired connection
-    #      copy:
-    #        content: |
-    #          Description='Wired with DHCP'
-    #          Interface={{ wired_interface }}
-    #          Connection=ethernet
-    #          IP=dhcp
-    #          IP6=dhcp-noaddr
-    #          # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
-    #          ExecUpPost='/usr/bin/ip link set {{ wired_interface }} mtu 1480'
-    #        dest: /mnt/etc/netctl/wired
-    #    - name: Enable wired netctl profile
-    #      command: arch-chroot /mnt netctl enable wired
-    #  tags:
-    #    - netctl
+    - name: Setup netctl
+      block:
+        - name: Create netctl profile for wired connection
+          copy:
+            content: |
+              Description='Wired with DHCP'
+              Interface={{ wired_interface }}
+              Connection=ethernet
+              IP=dhcp
+              IP6=dhcp-noaddr
+              # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
+              ExecUpPost='/usr/bin/ip link set {{ wired_interface }} mtu 1480'
+            dest: /mnt/etc/netctl/wired
+        - name: Enable wired netctl profile
+          command: arch-chroot /mnt netctl enable wired
+      tags:
+        - netctl
     
     - name: Enable sshd
       command: arch-chroot /mnt systemctl enable sshd

@@ -1,4 +1,14 @@
 ---
 all:
  hosts:
-  lefty:
+  new_pc:
+    ansible_become: yes
+    ansible_ssh_common_args: -o "StrictHostKeyChecking no" -o "UserKnownHostsFile /dev/null"
+    ansible_host: 10.77.77.179
+    ansible_user: root
+    ansible_ssh_pass: archiso
+    install_drive: /dev/sda
+    luks_keyfile: luks_keyfile
+    boot_partition_suffix: 1
+    root_partition_suffix: 2
+    wired_interface: enp0s3

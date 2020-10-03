@@ -17,7 +17,7 @@ bootentryusb="$bootentrydir/archiso-x86_64-usb.conf"
 # Create directory
 mkdir $archisodir
 
-# Copy archiso contents to directory
+# Copy archiso profile contents to directory
 cp -r /usr/share/archiso/configs/releng/* $archisodir
 
 # Add console device
