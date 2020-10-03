@@ -1,0 +1,10 @@
+---
+all:
+  children:
+    home:
+      hosts:
+        haggard:
+        lefty:
+    cisa:
+      hosts:
+        philthy:

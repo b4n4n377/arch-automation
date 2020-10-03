@@ -1,0 +1,345 @@
+---
+- hosts: all
+  tasks:
+
+    ### Abort if the host is not booted from the Arch install media
+    - name: Abort if the host is not booted from the Arch install media
+      fail:
+        msg: "This host is not booted from the Arch install media!"
+      when: ansible_nodename != 'archiso'
+      tags:
+        - quick_exit
+
+    ### Synchronize clock via NTP
+    - name: Synchronize clock via NTP
+      command: timedatectl set-ntp true
+      tags:
+        - sync_clock
+
+    ### Repartition install drive
+    - name: Repartition install drive
+      block:
+        - name: Wipe install drive and all its partitions
+          command: find /dev -wholename "{{ install_drive }}*" -exec wipefs --force --all {} \;
+          tags:
+            - wipefs
+        - name: Create boot partition
+          parted:
+            device: '{{ install_drive }}'
+            label: gpt
+            number: 1
+            part_end: 250MB
+            name: boot
+            flags: [boot, esp]
+            state: present
+        - name: Create root partition
+          parted:
+            device: '{{ install_drive }}'
+            label: gpt
+            number: 2
+            part_start: 250MB
+            name: root
+            flags: []
+            state: present
+      tags:
+        - repartition
+
+    ### Setup LUKS encryption for root filesystem   
+    - name: Setup LUKS encryption for root filesystem
+      block:
+        - name: Copy keyfile
+          copy:
+            src: '{{ luks_keyfile }}'
+            dest: /root/keyfile
+            mode: '0600'
+        - name: Destroy existing LUKS volume
+          luks_device:
+            device: '{{ install_drive }}{{ root_partition_suffix }}'
+            state: absent
+        - name: Create and open LUKS volume
+          luks_device:
+            device: '{{ install_drive }}{{ root_partition_suffix }}'
+            keyfile: /root/keyfile
+            name: root
+            state: opened
+        - name: Get UUID for root LUKS volume
+          command: blkid -s UUID -o value '{{ install_drive }}{{ root_partition_suffix }}'
+          register: root_luks_uuid
+          changed_when: false
+      tags:
+        - luks
+
+    ### Create files systems
+    - name: Create filesystems
+      block:
+        - name: Create FAT32 filesystem in boot partition
+          filesystem:
+            dev: '{{ install_drive }}{{ boot_partition_suffix }}'
+            fstype: vfat
+            opts: -F32
+            force: yes
+        - name: Create btrfs filesystem in root volume
+          filesystem:
+            dev: /dev/mapper/root
+            fstype: btrfs
+            force: yes
+        - name: Get UUID for boot filesystem
+          command: blkid -s UUID -o value '{{ install_drive }}{{ boot_partition_suffix }}'
+          register: boot_uuid
+          changed_when: false
+        - name: Get UUID for root filesystem
+          command: blkid -s UUID -o value /dev/mapper/root
+          register: root_uuid
+          changed_when: false
+      tags:
+        - create_filesystems
+
+    ### Create subvolumes and mount filesystems
+    - name: Create subvolumes and mount filesystems
+      block:
+        - name: Mount root filesystem
+          mount:
+            path: /mnt
+            src: UUID={{ root_uuid.stdout }}
+            fstype: btrfs
+            state: mounted
+        - name: Create BTRFS subvolume @
+          command: btrfs sub create /mnt/@
+          changed_when: false
+        - name: Create BTRFS subvolume @home
+          command: btrfs sub create /mnt/@home
+          changed_when: false
+        - name: Create BTRFS subvolume @pkg
+          command: btrfs sub create /mnt/@pkg
+          changed_when: false
+        - name: Create BTRFS subvolume @snapshots
+          command: btrfs sub create /mnt/@snapshots
+          changed_when: false
+        - name: Unmount root filesystem
+          mount:
+            path: /mnt
+            state: unmounted
+        - name: Mount BTRFS subvolume @
+          mount:
+            path: /mnt
+            src: UUID={{ root_uuid.stdout }}
+            opts: noatime,compress=lzo,space_cache,ssd,subvol=@
+            fstype: btrfs
+            state: mounted
+        - name: Create boot directory
+          file:
+            path: /mnt/boot
+            state: directory
+            mode: '0755'  
+        - name: Create home directory
+          file:
+            path: /mnt/home
+            state: directory
+            mode: '0755'  
+        - name: Create pacman-cache directory
+          file:
+            path: /mnt/var/cache/pacman/pkg
+            state: directory
+            mode: '0755'
+        - name: Create snapshot directory
+          file:
+            path: /mnt/.snapshots
+            state: directory
+            mode: '0755'  
+        - name: Create BTRFS directory
+          file:
+            path: /mnt/btrfs
+            state: directory
+            mode: '0755'
+        - name: Mount boot filesystem
+          mount:
+            path: /mnt/boot
+            src: UUID={{ boot_uuid.stdout }}
+            fstype: vfat
+            state: mounted
+        - name: Mount BTRFS subvolume @home
+          mount:
+            path: /mnt/home
+            src: UUID={{ root_uuid.stdout }}
+            opts: noatime,compress=lzo,space_cache,ssd,subvol=@home
+            fstype: btrfs
+            state: mounted
+        - name: Mount BTRFS subvolume @pkg
+          mount:
+            path: /mnt/var/cache/pacman/pkg
+            src: UUID={{ root_uuid.stdout }}
+            opts: noatime,compress=lzo,space_cache,ssd,subvol=@pkg
+            fstype: btrfs
+            state: mounted
+        - name: Mount BTRFS subvolume @snapshots
+          mount:
+            path: /mnt/.snapshots
+            src: UUID={{ root_uuid.stdout }}
+            opts: noatime,compress=lzo,space_cache,ssd,subvol=@snapshots
+            fstype: btrfs
+            state: mounted
+        - name: Mount BTRFS subvolume 5
+          mount:
+            path: /mnt/btrfs
+            src: UUID={{ root_uuid.stdout }}
+            opts: noatime,compress=lzo,space_cache,ssd,subvolid=5
+            fstype: btrfs
+            state: mounted
+      tags:
+        - mount_filesystems
+
+    ### Rank Arch mirrors
+    - name: Rank Arch mirrors
+      block:
+        - name: Install the pacman-contrib package (for rankmirrors)
+          pacman:
+            name:
+              - pacman-contrib
+            update_cache: yes
+        - name: Use rankmirrors to filter the fastest mirrors that support HTTPS
+          shell: curl -s "https://www.archlinux.org/mirrorlist/?country=DE&protocol=https&use_mirror_status=on" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > /etc/pacman.d/mirrorlist
+      tags:
+        - mirrors
+
+    ### Run pacstrap
+    - name: Run pacstrap
+      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch
+      tags:
+        - pacstrap
+
+    ### Generate fstab   
+    - name: Generate fstab
+      shell: genfstab -U /mnt >> /mnt/etc/fstab 
+      tags:
+        - fstab
+
+    ### Set local timezone
+    - name: Set local timezone
+      command: arch-chroot /mnt ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+      tags:
+        - timezone
+
+    ### Generate adjtime file
+    - name: Generate adjtime file
+      command: arch-chroot /mnt hwclock --systohc
+      tags:
+        - adjtime
+        
+    ### Setup locales
+    - name: Setup locales
+      block:
+        - name: Configure locale.gen
+          lineinfile:
+            dest: /mnt/etc/locale.gen
+            regexp: '{{ item.regex }}'
+            line: '{{ item.line }}'
+          loop:
+            - {regex: de_DE\.UTF-8 UTF-8, line: de_DE.UTF-8 UTF-8}
+            - {regex: de_DE ISO-8859-1, line: de_DE ISO-8859-1}
+        - name: Create locale.conf
+          copy:
+            content: "LANG=de_DE.UTF-8"
+            dest: /mnt/etc/locale.conf
+        - name: Generate locales
+          command: arch-chroot /mnt locale-gen
+      tags:
+        - locales
+    
+    - name: Set hostname
+      copy:
+        content: '{{ inventory_hostname }}'
+        dest: /mnt/etc/hostname
+      tags:
+        - hostname
+    
+    #- name: Setup netctl
+    #  block:
+    #    - name: Create netctl profile for wired connection
+    #      copy:
+    #        content: |
+    #          Description='Wired with DHCP'
+    #          Interface={{ wired_interface }}
+    #          Connection=ethernet
+    #          IP=dhcp
+    #          IP6=dhcp-noaddr
+    #          # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
+    #          ExecUpPost='/usr/bin/ip link set {{ wired_interface }} mtu 1480'
+    #        dest: /mnt/etc/netctl/wired
+    #    - name: Enable wired netctl profile
+    #      command: arch-chroot /mnt netctl enable wired
+    #  tags:
+    #    - netctl
+    
+    - name: Enable sshd
+      command: arch-chroot /mnt systemctl enable sshd
+      tags:
+        - sshd
+    
+    #- name: Set up initramfs
+    #  block:
+    #    - name: Add mkinitcpio.conf hooks
+    #      lineinfile:
+    #        dest: /mnt/etc/mkinitcpio.conf
+    #        regexp: ^HOOKS=
+    #        line: HOOKS=(base udev autodetect keyboard keymap modconf block encrypt lvm2 filesystems fsck)
+    #    - name: Create new initramfs
+    #      command: arch-chroot /mnt mkinitcpio -p linux
+    #  tags:
+    #    - initramfs
+    #    - mkinitcpio
+    
+    #- name: Set up grub
+    #  block:
+    #    - name: Add commandline information to grub config
+    #      lineinfile:
+    #        dest: /mnt/etc/default/grub
+    #        regexp: ^GRUB_CMDLINE_LINUX=
+    #        line: GRUB_CMDLINE_LINUX="cryptdevice=UUID={{ root_luks_uuid.stdout }}:root root=/dev/mapper/root"
+    #    - name: Install grub
+    #      command: arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+    #    - name: Create grub config
+    #      command: arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+    #  tags:
+    #    - grub
+    
+    #- name: Setup user account
+    #  block:
+    #    - name: Create user account
+    #      command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{ user_password }}
+    #    - name: Create user's ssh directory
+    #      file:
+    #        path: /mnt/home/{{ user_name }}/.ssh
+    #        state: directory
+    #    - name: Set mode, owner, and group on user's ssh directory
+    #      command: arch-chroot /mnt {{ item }}
+    #      loop:
+    #        - chmod 0700 /home/{{ user_name }}/.ssh
+    #        - chown {{ user_name }}:{{ user_name }} /home/{{ user_name }}/.ssh
+    #    - name: Copy over ssh key from current Ansible controller as an authorized key
+    #      copy:
+    #        src: '{{ lookup("env", "HOME") }}/.ssh/id_ed25519.pub'
+    #        dest: /mnt/home/{{ user_name }}/.ssh/authorized_keys
+    #    - name: Set mode, owner, and group on user's authorized_key file
+    #      command: arch-chroot /mnt {{ item }}
+    #      loop:
+    #        - chmod 0600 /home/{{ user_name }}/.ssh/authorized_keys
+    #        - chown {{ user_name }}:{{ user_name }} /home/{{ user_name }}/.ssh/authorized_keys
+    #  tags:
+    #    - user_account
+    
+    #- name: Give passwordless sudo access to wheel group
+    #  copy:
+    #    content: '%wheel ALL=(ALL) NOPASSWD: ALL'
+    #    dest: /mnt/etc/sudoers.d/wheel
+    #    validate: /usr/sbin/visudo --check --file=%s
+    #  tags:
+    #    - sudo
+    
+    #- name: Reboot
+    #  reboot:
+    #    connect_timeout: 1
+    #    reboot_timeout: 1
+    #  failed_when: false
+    #  tags:
+    #    - reboot
+#
