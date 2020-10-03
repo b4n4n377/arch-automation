@@ -1,5 +1,0 @@
----
-# tasks file for arch-automation
-- include_tasks: prepare_hdd.yml
-#- include_tasks: configure.yml
-#- include_tasks: service.yml
