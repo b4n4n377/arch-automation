@@ -1,5 +1,20 @@
 ---
 - hosts: all
+  
+  vars_prompt:
+
+    - name: luks_passphrase
+      prompt: "Enter a passphrase for hard disk encryption"
+      private: yes
+ 
+    - name: user_name
+      prompt: "Enter your linux user name"
+      private: no
+
+    - name: user_password
+      prompt: "Enter your linux password"
+      private: yes
+
   tasks:
 
     ### Abort if the host is not booted from the Arch install media
@@ -47,11 +62,6 @@
     ### Setup LUKS encryption for root filesystem   
     - name: Setup LUKS encryption for root filesystem
       block:
-        - name: Copy keyfile
-          copy:
-            src: '{{ luks_keyfile }}'
-            dest: /root/keyfile
-            mode: '0600'
         - name: Destroy existing LUKS volume
           luks_device:
             device: '{{ install_drive }}{{ root_partition_suffix }}'
@@ -59,7 +69,7 @@
         - name: Create and open LUKS volume
           luks_device:
             device: '{{ install_drive }}{{ root_partition_suffix }}'
-            keyfile: /root/keyfile
+            passphrase: '{{ luks_passphrase }}'
             name: root
             state: opened
         - name: Get UUID for root LUKS volume
@@ -68,6 +78,8 @@
           changed_when: false
       tags:
         - luks
+
+
 
     ### Create files systems
     - name: Create filesystems
@@ -203,7 +215,7 @@
 
     ### Run pacstrap
     - name: Run pacstrap
-      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch netctl
+      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch netctl mkinitcpio linux nano
       tags:
         - pacstrap
 
@@ -275,18 +287,52 @@
       tags:
         - sshd
     
-    #- name: Set up initramfs
-    #  block:
-    #    - name: Add mkinitcpio.conf hooks
-    #      lineinfile:
-    #        dest: /mnt/etc/mkinitcpio.conf
-    #        regexp: ^HOOKS=
-    #        line: HOOKS=(base udev autodetect keyboard keymap modconf block encrypt lvm2 filesystems fsck)
-    #    - name: Create new initramfs
-    #      command: arch-chroot /mnt mkinitcpio -p linux
-    #  tags:
-    #    - initramfs
-    #    - mkinitcpio
+    - name: Set up initramfs
+      block:
+        - name: Add mkinitcpio.conf hooks
+          lineinfile:
+            dest: /mnt/etc/mkinitcpio.conf
+            regexp: ^HOOKS=
+            line: HOOKS=(base udev autodetect keyboard keymap modconf block encrypt btrfs filesystems)
+        - name: Create new initramfs
+          command: arch-chroot /mnt mkinitcpio -p linux
+      tags:
+        - initramfs
+        - mkinitcpio
+    
+    - name: Set up systemd-boot bootloader
+      block:
+        - name: Install systemd-boot
+          command: arch-chroot /mnt bootctl --path=boot install
+        - name: Remove old loader.conf
+          file:
+            path: /mnt/boot/loader/loader.conf
+            state: absent
+        - name: Touch new loader loader.conf
+          file:
+            path: /mnt/boot/loader/loader.conf
+            state: touch
+        - name: Update new loader.conf
+          blockinfile:
+            path: /mnt/boot/loader/loader.conf
+            block: |
+              default arch
+              timeout 4
+              editor 0
+        - name: Touch loader entry file
+          file:
+            path: /mnt/boot/loader/entries/arch.conf
+            state: touch
+        - name: Create new loader entry
+          blockinfile:
+            path: /mnt/boot/loader/entries/arch.conf
+            block: |
+              title Arch Linux Btrfs
+              linux /vmlinuz-linux
+              initrd /initramfs-linux.img
+              options cryptdevice=/dev/sda2:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@ rw
+      tags: 
+        - systemd-boot
     
     #- name: Set up grub
     #  block:
@@ -302,10 +348,10 @@
     #  tags:
     #    - grub
     
-    #- name: Setup user account
-    #  block:
-    #    - name: Create user account
-    #      command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{ user_password }}
+    - name: Setup user account
+      block:
+        - name: Create user account
+          command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{ user_password }}
     #    - name: Create user's ssh directory
     #      file:
     #        path: /mnt/home/{{ user_name }}/.ssh
@@ -324,22 +370,22 @@
     #      loop:
     #        - chmod 0600 /home/{{ user_name }}/.ssh/authorized_keys
     #        - chown {{ user_name }}:{{ user_name }} /home/{{ user_name }}/.ssh/authorized_keys
-    #  tags:
-    #    - user_account
+      tags:
+        - user_account
     
-    #- name: Give passwordless sudo access to wheel group
-    #  copy:
-    #    content: '%wheel ALL=(ALL) NOPASSWD: ALL'
-    #    dest: /mnt/etc/sudoers.d/wheel
-    #    validate: /usr/sbin/visudo --check --file=%s
-    #  tags:
-    #    - sudo
+    - name: Give sudo access to wheel group
+      copy:
+        content: '%wheel ALL=(ALL) ALL'
+        dest: /mnt/etc/sudoers.d/wheel
+        validate: /usr/sbin/visudo --check --file=%s
+      tags:
+        - sudo
     
-    #- name: Reboot
-    #  reboot:
-    #    connect_timeout: 1
-    #    reboot_timeout: 1
-    #  failed_when: false
-    #  tags:
-    #    - reboot
+    - name: Reboot
+      reboot:
+        connect_timeout: 1
+        reboot_timeout: 1
+      failed_when: false
+      tags:
+        - reboot
 #

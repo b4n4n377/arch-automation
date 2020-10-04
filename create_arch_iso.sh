@@ -49,5 +49,3 @@ cp /etc/pacman.d/mirrorlist $archisodir/airootfs/root/
 mkdir $archisodir/out
 cd $archisodir
 ./build.sh -v
-
-echo "Arch installation ISO created in $archisodir/out/"
