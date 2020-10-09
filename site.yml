@@ -215,7 +215,7 @@
 
     ### Run pacstrap
     - name: Run pacstrap
-      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch netctl mkinitcpio linux nano
+      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch mkinitcpio linux nano vim nvidia lightdm lightdm-gtk-greeter i3-gaps firefox ntp dmenu cronie xorg-server htop thunderbird thunderbird-i18n-de pulseaudio pulseaudio-alsa pulseaudio-bluetooth pavucontrol git
       tags:
         - pacstrap
 
@@ -264,23 +264,22 @@
       tags:
         - hostname
     
-    - name: Setup netctl
+    - name: Setup systemd-networkd
       block:
-        - name: Create netctl profile for wired connection
+        - name: Create profile for wired connection
           copy:
             content: |
-              Description='Wired with DHCP'
-              Interface={{ wired_interface }}
-              Connection=ethernet
-              IP=dhcp
-              IP6=dhcp-noaddr
+              [Match]
+              Name={{ wired_interface }}
+              [Network]
+              DHCP=yes
+              DNS=10.77.77.254
+              #[Link]
+              #MTUBytes=1480
               # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
-              ExecUpPost='/usr/bin/ip link set {{ wired_interface }} mtu 1480'
-            dest: /mnt/etc/netctl/wired
-        - name: Enable wired netctl profile
-          command: arch-chroot /mnt netctl enable wired
+            dest: /mnt/etc/systemd/network/20-wired.network
       tags:
-        - netctl
+        - systemd-networkd
     
     - name: Enable sshd
       command: arch-chroot /mnt systemctl enable sshd
@@ -330,28 +329,19 @@
               title Arch Linux Btrfs
               linux /vmlinuz-linux
               initrd /initramfs-linux.img
-              options cryptdevice=/dev/sda2:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@ rw
+              options cryptdevice=UUID={{ root_luks_uuid.stdout }}:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@ rw
       tags: 
         - systemd-boot
     
-    #- name: Set up grub
-    #  block:
-    #    - name: Add commandline information to grub config
-    #      lineinfile:
-    #        dest: /mnt/etc/default/grub
-    #        regexp: ^GRUB_CMDLINE_LINUX=
-    #        line: GRUB_CMDLINE_LINUX="cryptdevice=UUID={{ root_luks_uuid.stdout }}:root root=/dev/mapper/root"
-    #    - name: Install grub
-    #      command: arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
-    #    - name: Create grub config
-    #      command: arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
-    #  tags:
-    #    - grub
-    
     - name: Setup user account
       block:
+        - name: Generate crypted password for user account
+          shell: echo $(perl -e 'print crypt($ARGV[0], "password")' '{{ user_password }}')
+          register: crypt_pw
+
         - name: Create user account
-          command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{ user_password }}
+          command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{crypt_pw.stdout}}
+ 
     #    - name: Create user's ssh directory
     #      file:
     #        path: /mnt/home/{{ user_name }}/.ssh
@@ -381,11 +371,29 @@
       tags:
         - sudo
     
+    - name: Enable Services
+      block:
+        - name: Enable systemd-networkd
+          command: arch-chroot /mnt systemctl enable systemd-networkd
+        - name: Enable systemd-resolved
+          command: arch-chroot /mnt systemctl enable systemd-resolved
+        - name: Enable ntpd
+          command: arch-chroot /mnt systemctl enable ntpd
+        - name: Enable lightdm
+          command: arch-chroot /mnt systemctl enable lightdm
+        - name: Enable cronie
+          command: arch-chroot /mnt systemctl enable cronie
+        - name: Enable btrfs-scrub@btrfs.timer
+          command: arch-chroot /mnt systemctl enable btrfs-scrub@btrfs.timer
+        - name: Enable btrfs-scrub@btrfs.service
+          command: arch-chroot /mnt systemctl enable btrfs-scrub@btrfs.service
+      tags:
+        - enable_services    
+
     - name: Reboot
       reboot:
         connect_timeout: 1
         reboot_timeout: 1
       failed_when: false
       tags:
-        - reboot
-#
+        - reboot#
