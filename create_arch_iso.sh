@@ -11,8 +11,8 @@ archisodir="/tmp/archiso$RANDOM"
 
 bootentrydir="$archisodir/efiboot/loader/entries/"
 
-bootentrycd="$bootentrydir/archiso-x86_64-cd.conf"
-bootentryusb="$bootentrydir/archiso-x86_64-usb.conf"
+bootentry="$bootentrydir/archiso-x86_64-linux.conf"
+bootentryspeech="$bootentrydir/archiso-x86_64-speech-linux.conf"
 
 # Create directory
 mkdir $archisodir
@@ -21,7 +21,7 @@ mkdir $archisodir
 cp -r /usr/share/archiso/configs/releng/* $archisodir
 
 # Add console device
-for i in {$bootentrycd,$bootentryusb}; do
+for i in {$bootentry,$bootentryspeech}; do
     sed -i '/^options/ s/$/ console=ttyS0/' $i
 done
 
@@ -46,6 +46,6 @@ echo 'ansible' \
 cp /etc/pacman.d/mirrorlist $archisodir/airootfs/root/
 
 # Build image
-mkdir $archisodir/out
-cd $archisodir
-./build.sh -v
+mkarchiso -v -o ./ $archisodir
+
+rm -rf ./work
