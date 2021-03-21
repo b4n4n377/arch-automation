@@ -1,0 +1,17 @@
+---
+all:
+ hosts:
+  #archbox01:
+  #  ansible_become: yes
+  #  ansible_ssh_common_args: -o "StrictHostKeyChecking no" -o "UserKnownHostsFile /dev/null"
+  #  ansible_host: 10.77.77.200
+  #  ansible_user: root
+  #  ansible_ssh_pass: archiso
+  #  install_drive: /dev/nvme0n1
+  #  boot_partition_suffix: p1
+  #  root_partition_suffix: p2
+  #  wired_interface: enp4s0
+  archbox02:
+    ansible_become: yes
+    ansible_ssh_common_args: -o "StrictHostKeyChecking no" -o "UserKnownHostsFile /dev/null"
+    ansible_host: 10.77.77.201

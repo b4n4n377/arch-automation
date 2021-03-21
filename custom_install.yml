@@ -1,0 +1,52 @@
+---
+- hosts: all
+
+  tasks:
+
+    - name: Set keyboard layout
+      shell: localectl set-x11-keymap de
+      tags:
+        - localectl
+
+    - name: Add user aur_builder
+      user:
+        name: aur_builder
+      tags:
+        - aur_builder
+
+    - name: Allow aur_builder to run sudo on pacman without PW
+      lineinfile:
+        path: /etc/sudoers.d/11-install-aur_builder
+        state: present
+        line: "aur_builder ALL=(ALL) NOPASSWD: /usr/bin/pacman"
+        validate: /usr/sbin/visudo -cf %s
+        create: yes
+      tags:
+        - aur_builder
+
+    - name: Git clone yay
+      git:
+        repo: https://aur.archlinux.org/yay.git
+        dest: ~/yay
+        version: master
+        accept_hostkey: yes
+      become: yes
+      become_user: aur_builder
+      tags:
+        - yay
+
+    - name: Install yay
+      shell: makepkg -si --noconfirm
+      become: yes
+      become_user: aur_builder
+      args:
+        chdir: ~/yay
+      tags:
+        - yay
+
+    - name: Install visual-studio-code
+      shell: yay -S visual-studio-code-insiders-bin --noconfirm
+      become: yes
+      become_user: aur_builder
+      tags:
+        - yay

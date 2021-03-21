@@ -1,12 +1,11 @@
 ---
 - hosts: all
-  
-  vars_prompt:
 
+  vars_prompt:
     - name: luks_passphrase
       prompt: "Enter a passphrase for hard disk encryption"
       private: yes
- 
+
     - name: user_name
       prompt: "Enter your linux user name"
       private: no
@@ -16,7 +15,6 @@
       private: yes
 
   tasks:
-
     ### Abort if the host is not booted from the Arch install media
     - name: Abort if the host is not booted from the Arch install media
       fail:
@@ -40,7 +38,7 @@
             - wipefs
         - name: Create boot partition
           parted:
-            device: '{{ install_drive }}'
+            device: "{{ install_drive }}"
             label: gpt
             number: 1
             part_end: 250MB
@@ -49,7 +47,7 @@
             state: present
         - name: Create root partition
           parted:
-            device: '{{ install_drive }}'
+            device: "{{ install_drive }}"
             label: gpt
             number: 2
             part_start: 250MB
@@ -59,17 +57,17 @@
       tags:
         - repartition
 
-    ### Setup LUKS encryption for root filesystem   
+    ### Setup LUKS encryption for root filesystem
     - name: Setup LUKS encryption for root filesystem
       block:
         - name: Destroy existing LUKS volume
           luks_device:
-            device: '{{ install_drive }}{{ root_partition_suffix }}'
+            device: "{{ install_drive }}{{ root_partition_suffix }}"
             state: absent
         - name: Create and open LUKS volume
           luks_device:
-            device: '{{ install_drive }}{{ root_partition_suffix }}'
-            passphrase: '{{ luks_passphrase }}'
+            device: "{{ install_drive }}{{ root_partition_suffix }}"
+            passphrase: "{{ luks_passphrase }}"
             name: root
             state: opened
         - name: Get UUID for root LUKS volume
@@ -79,14 +77,12 @@
       tags:
         - luks
 
-
-
     ### Create files systems
     - name: Create filesystems
       block:
         - name: Create FAT32 filesystem in boot partition
           filesystem:
-            dev: '{{ install_drive }}{{ boot_partition_suffix }}'
+            dev: "{{ install_drive }}{{ boot_partition_suffix }}"
             fstype: vfat
             opts: -F32
             force: yes
@@ -142,27 +138,27 @@
           file:
             path: /mnt/boot
             state: directory
-            mode: '0755'  
+            mode: "0755"
         - name: Create home directory
           file:
             path: /mnt/home
             state: directory
-            mode: '0755'  
+            mode: "0755"
         - name: Create pacman-cache directory
           file:
             path: /mnt/var/cache/pacman/pkg
             state: directory
-            mode: '0755'
+            mode: "0755"
         - name: Create snapshot directory
           file:
             path: /mnt/.snapshots
             state: directory
-            mode: '0755'  
+            mode: "0755"
         - name: Create BTRFS directory
           file:
             path: /mnt/btrfs
             state: directory
-            mode: '0755'
+            mode: "0755"
         - name: Mount boot filesystem
           mount:
             path: /mnt/boot
@@ -215,13 +211,13 @@
 
     ### Run pacstrap
     - name: Run pacstrap
-      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch mkinitcpio linux nano vim nvidia lightdm lightdm-gtk-greeter i3-gaps firefox ntp dmenu cronie xorg-server htop thunderbird thunderbird-i18n-de pulseaudio pulseaudio-alsa pulseaudio-bluetooth pavucontrol git
+      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch mkinitcpio linux nano vim nvidia lightdm lightdm-gtk-greeter i3-gaps firefox ntp dmenu cronie xorg-server htop thunderbird thunderbird-i18n-de pulseaudio pulseaudio-alsa pulseaudio-bluetooth pavucontrol git i3status leafpad keepassxc nmap qemu virt-manager mc pcmanfm dnsutils docker docker-compose firejail feh gnome-screenshot ntfs-3g
       tags:
         - pacstrap
 
-    ### Generate fstab   
+    ### Generate fstab
     - name: Generate fstab
-      shell: genfstab -U /mnt >> /mnt/etc/fstab 
+      shell: genfstab -U /mnt >> /mnt/etc/fstab
       tags:
         - fstab
 
@@ -236,18 +232,18 @@
       command: arch-chroot /mnt hwclock --systohc
       tags:
         - adjtime
-        
+
     ### Setup locales
     - name: Setup locales
       block:
         - name: Configure locale.gen
           lineinfile:
             dest: /mnt/etc/locale.gen
-            regexp: '{{ item.regex }}'
-            line: '{{ item.line }}'
+            regexp: "{{ item.regex }}"
+            line: "{{ item.line }}"
           loop:
-            - {regex: de_DE\.UTF-8 UTF-8, line: de_DE.UTF-8 UTF-8}
-            - {regex: de_DE ISO-8859-1, line: de_DE ISO-8859-1}
+            - { regex: de_DE\.UTF-8 UTF-8, line: de_DE.UTF-8 UTF-8 }
+            - { regex: de_DE ISO-8859-1, line: de_DE ISO-8859-1 }
         - name: Create locale.conf
           copy:
             content: "LANG=de_DE.UTF-8"
@@ -256,14 +252,14 @@
           command: arch-chroot /mnt locale-gen
       tags:
         - locales
-    
+
     - name: Set hostname
       copy:
-        content: '{{ inventory_hostname }}'
+        content: "{{ inventory_hostname }}"
         dest: /mnt/etc/hostname
       tags:
         - hostname
-    
+
     - name: Setup systemd-networkd
       block:
         - name: Create profile for wired connection
@@ -280,12 +276,7 @@
             dest: /mnt/etc/systemd/network/20-wired.network
       tags:
         - systemd-networkd
-    
-    - name: Enable sshd
-      command: arch-chroot /mnt systemctl enable sshd
-      tags:
-        - sshd
-    
+
     - name: Set up initramfs
       block:
         - name: Add mkinitcpio.conf hooks
@@ -298,7 +289,7 @@
       tags:
         - initramfs
         - mkinitcpio
-    
+
     - name: Set up systemd-boot bootloader
       block:
         - name: Install systemd-boot
@@ -330,9 +321,9 @@
               linux /vmlinuz-linux
               initrd /initramfs-linux.img
               options cryptdevice=UUID={{ root_luks_uuid.stdout }}:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@ rw
-      tags: 
+      tags:
         - systemd-boot
-    
+
     - name: Setup user account
       block:
         - name: Generate crypted password for user account
@@ -341,38 +332,42 @@
 
         - name: Create user account
           command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{crypt_pw.stdout}}
- 
-    #    - name: Create user's ssh directory
-    #      file:
-    #        path: /mnt/home/{{ user_name }}/.ssh
-    #        state: directory
-    #    - name: Set mode, owner, and group on user's ssh directory
-    #      command: arch-chroot /mnt {{ item }}
-    #      loop:
-    #        - chmod 0700 /home/{{ user_name }}/.ssh
-    #        - chown {{ user_name }}:{{ user_name }} /home/{{ user_name }}/.ssh
-    #    - name: Copy over ssh key from current Ansible controller as an authorized key
-    #      copy:
-    #        src: '{{ lookup("env", "HOME") }}/.ssh/id_ed25519.pub'
-    #        dest: /mnt/home/{{ user_name }}/.ssh/authorized_keys
-    #    - name: Set mode, owner, and group on user's authorized_key file
-    #      command: arch-chroot /mnt {{ item }}
-    #      loop:
-    #        - chmod 0600 /home/{{ user_name }}/.ssh/authorized_keys
-    #        - chown {{ user_name }}:{{ user_name }} /home/{{ user_name }}/.ssh/authorized_keys
+
+        - name: Create default ssh keys
+          command:  arch-chroot /mnt runuser -l {{ user_name }} -c 'ssh-keygen -q -t rsa -N "" -C noname -f ~/.ssh/id_rsa <<<y 2>&1 >/dev/null'
+
+        - name: get authorized key from github and save in root account
+          authorized_key:
+            user: root
+            state: present
+            key: https://github.com/b4n4n377.keys
+            validate_certs: False
+
+        - name: copy authorized key from root account to new user account
+          copy:
+            src: ~/.ssh/authorized_keys
+            dest: /mnt/home/{{ user_name }}/.ssh/authorized_keys
+            remote_src: yes
+            owner: '1000'
+            group: '1000'
+            mode: 0644
       tags:
         - user_account
-    
+
     - name: Give sudo access to wheel group
       copy:
-        content: '%wheel ALL=(ALL) ALL'
+        content: "%wheel ALL=(ALL) ALL"
         dest: /mnt/etc/sudoers.d/wheel
         validate: /usr/sbin/visudo --check --file=%s
       tags:
         - sudo
-    
+
     - name: Enable Services
       block:
+        - name: Enable sshd
+          command: arch-chroot /mnt systemctl enable sshd
+        - name: Enable libvirtd
+          command: arch-chroot /mnt systemctl enable systemd-networkd
         - name: Enable systemd-networkd
           command: arch-chroot /mnt systemctl enable systemd-networkd
         - name: Enable systemd-resolved
@@ -388,12 +383,11 @@
         - name: Enable btrfs-scrub@btrfs.service
           command: arch-chroot /mnt systemctl enable btrfs-scrub@btrfs.service
       tags:
-        - enable_services    
-
-    - name: Reboot
-      reboot:
-        connect_timeout: 1
-        reboot_timeout: 1
-      failed_when: false
-      tags:
-        - reboot#
+        - enable_services
+    #- name: Reboot
+    #  reboot:
+    #    connect_timeout: 1
+    #    reboot_timeout: 1
+    #  failed_when: false
+    #  tags:
+    #    - reboot
