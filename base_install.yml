@@ -211,9 +211,60 @@
 
     ### Run pacstrap
     - name: Run pacstrap
-      command: pacstrap /mnt base base-devel btrfs-progs dosfstools bash-completion openssh terminator reflector screenfetch mkinitcpio linux nano vim nvidia lightdm lightdm-gtk-greeter i3-gaps firefox ntp dmenu cronie xorg-server htop thunderbird thunderbird-i18n-de pulseaudio pulseaudio-alsa pulseaudio-bluetooth pavucontrol git i3status leafpad keepassxc nmap qemu virt-manager mc pcmanfm dnsutils docker docker-compose firejail feh gnome-screenshot ntfs-3g
+      command: pacstrap /mnt base base-devel
       tags:
         - pacstrap
+
+      ### Install wanted packages via pacman
+    - name: Install kernel packages
+      command: arch-chroot /mnt pacman -S linux linux-firmware mkinitcpio --noconfirm
+      tags:
+        - software
+
+    - name: Install graphics & gui packages
+      command: arch-chroot /mnt pacman -S xorg-server nvidia lightdm lightdm-gtk-greeter i3-gaps i3status i3lock i3lock dmenu --noconfirm
+      tags:
+        - software
+
+    - name: Install sound and bluetooth packages
+      command: arch-chroot /mnt pacman -S pulseaudio pulseaudio-alsa pulseaudio-bluetooth pavucontrol bluez bluez-utils --noconfirm
+      tags:
+        - software
+
+    - name: Install wifi packages
+      command: arch-chroot /mnt pacman -S wpa_supplicant iw wavemon --noconfirm
+      tags:
+        - software
+
+    - name: Install filesystem packages
+      command: arch-chroot /mnt pacman -S btrfs-progs exfatprogs dosfstools ntfs-3g --noconfirm
+      tags:
+        - software
+
+    - name: Install system & tool packages
+      command: arch-chroot /mnt pacman -S ntp cronie reflector htop dnsutils mtr screenfetch terminus-font openssh bash-completion terminator git python mc pcmanfm feh gnome-screenshot --noconfirm
+      tags:
+        - software
+
+    - name: Install communication packages
+      command: arch-chroot /mnt pacman -S ntp firefox firefox-i18n-de thunderbird thunderbird-i18n-de discord --noconfirm
+      tags:
+        - software
+
+    - name: Install security packages
+      command: arch-chroot /mnt pacman -S keepassxc nmap firejail --noconfirm
+      tags:
+        - software
+
+    - name: Install editor packages
+      command: arch-chroot /mnt pacman -S nano vim leafpad mupdf texlive-core --noconfirm
+      tags:
+        - software
+
+    - name: Install vm & container packages
+      command: arch-chroot /mnt pacman -S nano qemu virt-manager docker docker-compose  --noconfirm
+      tags:
+        - software
 
     ### Generate fstab
     - name: Generate fstab
@@ -269,11 +320,23 @@
               Name={{ wired_interface }}
               [Network]
               DHCP=yes
-              DNS=10.77.77.254
+              DNS={{ dns_server }}
               #[Link]
               #MTUBytes=1480
               # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
             dest: /mnt/etc/systemd/network/20-wired.network
+        - name: Create profile for wireless connection
+          copy:
+            content: |
+              [Match]
+              Name={{ wireless_interface }}
+              [Network]
+              DHCP=yes
+              DNS={{ dns_server }}
+              #[Link]
+              #MTUBytes=1480
+              # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
+            dest: /mnt/etc/systemd/network/21-wireless.network
       tags:
         - systemd-networkd
 
@@ -334,13 +397,13 @@
           command: arch-chroot /mnt useradd --create-home --user-group --groups wheel {{ user_name }} --password {{crypt_pw.stdout}}
 
         - name: Create default ssh keys
-          command:  arch-chroot /mnt runuser -l {{ user_name }} -c 'ssh-keygen -q -t rsa -N "" -C noname -f ~/.ssh/id_rsa <<<y 2>&1 >/dev/null'
+          command: arch-chroot /mnt runuser -l {{ user_name }} -c 'ssh-keygen -q -t rsa -N "" -C noname -f ~/.ssh/id_rsa <<<y 2>&1 >/dev/null'
 
         - name: get authorized key from github and save in root account
           authorized_key:
             user: root
             state: present
-            key: https://github.com/b4n4n377.keys
+            key: "{{ github_public_key }}"
             validate_certs: False
 
         - name: copy authorized key from root account to new user account
@@ -348,8 +411,8 @@
             src: ~/.ssh/authorized_keys
             dest: /mnt/home/{{ user_name }}/.ssh/authorized_keys
             remote_src: yes
-            owner: '1000'
-            group: '1000'
+            owner: "1000"
+            group: "1000"
             mode: 0644
       tags:
         - user_account
@@ -372,6 +435,8 @@
           command: arch-chroot /mnt systemctl enable systemd-networkd
         - name: Enable systemd-resolved
           command: arch-chroot /mnt systemctl enable systemd-resolved
+        #- name: Enable bluetooth.service
+        #  command: arch-chroot /mnt systemctl enable bluetooth.service
         - name: Enable ntpd
           command: arch-chroot /mnt systemctl enable ntpd
         - name: Enable lightdm
@@ -384,10 +449,10 @@
           command: arch-chroot /mnt systemctl enable btrfs-scrub@btrfs.service
       tags:
         - enable_services
-    #- name: Reboot
-    #  reboot:
-    #    connect_timeout: 1
-    #    reboot_timeout: 1
-    #  failed_when: false
-    #  tags:
-    #    - reboot
+    - name: Reboot
+      reboot:
+        connect_timeout: 1
+        reboot_timeout: 1
+      failed_when: false
+      tags:
+        - reboot

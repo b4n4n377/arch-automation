@@ -1,8 +1,12 @@
 ---
 - hosts: all
 
-  tasks:
+  vars_prompt:
+    - name: user_name
+      prompt: "Enter your linux user name"
+      private: no
 
+  tasks:
     - name: Set keyboard layout
       shell: localectl set-x11-keymap de
       tags:
@@ -50,3 +54,46 @@
       become_user: aur_builder
       tags:
         - yay
+
+    - name: copy background picture
+      copy:
+        src: ./files/wallpaper.jpg
+        dest: /home/{{ user_name }}/.config/wallpaper.jpg
+        owner: "1000"
+        group: "1000"
+        mode: 0644
+
+    - name: copy ~/.Xresources
+      copy:
+        src: ./files/Xresources
+        dest: /home/{{ user_name }}/.Xresources
+        owner: "1000"
+        group: "1000"
+        mode: 0644
+
+    - name: Create i3status config directory
+      shell: pacman -S picom xf86-video-intel --noconfirm
+      become: yes
+      tags:
+        - i3config
+
+    - name: Create i3status config directory
+      shell: mkdir -p /home/{{ user_name }}/.config/i3status
+      tags:
+        - i3config
+
+    - name: copy ~/.config/i3/config
+      copy:
+        src: ./files/i3config
+        dest: /home/{{ user_name }}/.config/i3/config
+        owner: "1000"
+        group: "1000"
+        mode: 0644
+
+    - name: copy ~/.config/i3status/i3status.conf
+      copy:
+        src: ./files/i3status.conf
+        dest: /home/{{ user_name }}/.config/i3status/i3status.conf
+        owner: "1000"
+        group: "1000"
+        mode: 0644

@@ -1,2 +1,1 @@
-.travis.yml
-luks_keyfile
+*.iso
