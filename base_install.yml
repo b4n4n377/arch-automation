@@ -222,7 +222,7 @@
         - software
 
     - name: Install graphics & gui packages
-      command: arch-chroot /mnt pacman -S xorg-server nvidia lightdm lightdm-gtk-greeter i3-gaps i3status i3lock i3lock dmenu --noconfirm
+      command: arch-chroot /mnt pacman -S xorg-server nvidia lightdm lightdm-gtk-greeter i3-gaps i3status i3lock i3lock dmenu picom --noconfirm
       tags:
         - software
 
@@ -262,7 +262,7 @@
         - software
 
     - name: Install vm & container packages
-      command: arch-chroot /mnt pacman -S nano qemu virt-manager docker docker-compose  --noconfirm
+      command: arch-chroot /mnt pacman -S nano qemu virt-manager docker docker-compose remmina freerdp  --noconfirm
       tags:
         - software
 
@@ -349,14 +349,36 @@
             line: HOOKS=(base udev autodetect keyboard keymap modconf block encrypt btrfs filesystems)
         - name: Create new initramfs
           command: arch-chroot /mnt mkinitcpio -p linux
+        - name: Copy Linux Kernel to STABLE
+          copy:
+            src: /mnt/boot/vmlinuz-linux
+            dest: /mnt/boot/vmlinuz-linux-stable
+            remote_src: yes
+        - name: Copy Linux Kernel to OLDSTABLE
+          copy:
+            src: /mnt/boot/vmlinuz-linux
+            dest: /mnt/boot/vmlinuz-linux-oldstable
+            remote_src: yes
+        - name: Copy initramfs to STABLE
+          copy:
+            src: /mnt/boot/initramfs-linux.img
+            dest: /mnt/boot/initramfs-linux-stable.img
+            remote_src: yes
+        - name: Copy initramfs to OLDSTABLE
+          copy:
+            src: /mnt/boot/initramfs-linux.img
+            dest: /mnt/boot/initramfs-linux-oldstable.img
+            remote_src: yes
+
       tags:
         - initramfs
         - mkinitcpio
 
-    - name: Set up systemd-boot bootloader
+    - name: Set up systemd-boot bootloader and snapshots
       block:
         - name: Install systemd-boot
           command: arch-chroot /mnt bootctl --path=boot install
+
         - name: Remove old loader.conf
           file:
             path: /mnt/boot/loader/loader.conf
@@ -369,21 +391,46 @@
           blockinfile:
             path: /mnt/boot/loader/loader.conf
             block: |
-              default arch
-              timeout 4
+              default arch.conf
+              timeout 60
+              console-mode max
               editor 0
-        - name: Touch loader entry file
+        - name: Touch loader arch entry file
           file:
             path: /mnt/boot/loader/entries/arch.conf
             state: touch
-        - name: Create new loader entry
+        - name: Touch loader barch entry file
+          file:
+            path: /mnt/boot/loader/entries/barch.conf
+            state: touch
+        - name: Touch loader carch entry file
+          file:
+            path: /mnt/boot/loader/entries/carch.conf
+            state: touch
+        - name: Create new loader entry arch.conf
           blockinfile:
             path: /mnt/boot/loader/entries/arch.conf
-            block: |
-              title Arch Linux Btrfs
+            block: | 
+              title Arch Linux BTRFS TESTING
               linux /vmlinuz-linux
               initrd /initramfs-linux.img
-              options cryptdevice=UUID={{ root_luks_uuid.stdout }}:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@ rw
+              options cryptdevice=UUID={{ root_luks_uuid.stdout }}:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@snapshots/TESTING rw
+        - name: Create new loader entry barch.conf
+          blockinfile:
+            path: /mnt/boot/loader/entries/barch.conf
+            block: | 
+              title Arch Linux BTRFS STABLE
+              linux /vmlinuz-linux-stable
+              initrd /initramfs-linux-stable.img
+              options cryptdevice=UUID={{ root_luks_uuid.stdout }}:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@snapshots/STABLE rw
+        - name: Create new loader entry carch.conf
+          blockinfile: 
+            path: /mnt/boot/loader/entries/carch.conf
+            block: | 
+              title Arch Linux BTRFS OLDSTABLE
+              linux /vmlinuz-linux-oldstable
+              initrd /initramfs-linux-oldstable.img
+              options cryptdevice=UUID={{ root_luks_uuid.stdout }}:root:allow-discards rd.luks.options=discard root=/dev/mapper/root rootflags=subvol=@snapshots/OLDSTABLE rw
       tags:
         - systemd-boot
 
@@ -425,6 +472,20 @@
       tags:
         - sudo
 
+    - name: Create scripts directory
+      shell: mkdir -p /mnt/home/{{ user_name }}/.scripts
+
+    - name: copy ~/.scripts/update.sh
+      copy:
+        src: ./files/update.sh
+        dest: /mnt/home/{{ user_name }}/.scripts/update.sh
+        owner: "1000"
+        group: "1000"
+        mode: 0755
+
+    - name: Balance BTRFS filesystem
+      command: arch-chroot /mnt btrfs balance start -dusage=5 /btrfs
+
     - name: Enable Services
       block:
         - name: Enable sshd
@@ -447,8 +508,24 @@
           command: arch-chroot /mnt systemctl enable btrfs-scrub@btrfs.timer
         - name: Enable btrfs-scrub@btrfs.service
           command: arch-chroot /mnt systemctl enable btrfs-scrub@btrfs.service
+        - name: Enable fstrim.timer
+          command: arch-chroot /mnt systemctl enable fstrim.timer
       tags:
         - enable_services
+
+    - name: Create BTRFS TESTING Snapshot of root /
+      command: arch-chroot /mnt btrfs sub snap / /.snapshots/TESTING
+    - name: Create BTRFS STABLE Snapshot of root /
+      command: arch-chroot /mnt btrfs sub snap / /.snapshots/STABLE
+    - name: Create BTRFS OLDSTABLE Snapshot of root /
+      command: arch-chroot /mnt btrfs sub snap / /.snapshots/OLDSTABLE
+
+    - name: Adapt /etc/fstab of TESTING snapshot
+      command: sed -i 's/\/@,/@snapshots\/TESTING,/g' /mnt/.snapshots/TESTING/etc/fstab
+    - name: Adapt /etc/fstab of STABLE snapshot
+      command: sed -i 's/\/@,/@snapshots\/STABLE,/g' /mnt/.snapshots/STABLE/etc/fstab
+    - name: Adapt /etc/fstab of OLDSTABLE snapshot
+      command: sed -i 's/\/@,/@snapshots\/OLDSTABLE,/g' /mnt/.snapshots/OLDSTABLE/etc/fstab
     - name: Reboot
       reboot:
         connect_timeout: 1
