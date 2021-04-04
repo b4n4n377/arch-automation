@@ -24,7 +24,7 @@
       - name: Abort if the host is not booted from the Arch install media
         fail:
           msg: "This host is not booted from the Arch install media!"
-          when: ansible_nodename != 'archiso'
+        when: ansible_nodename != 'archiso'
       - name: Synchronize clock via NTP
         command: timedatectl set-ntp true
     
@@ -183,6 +183,8 @@
           update_cache: yes
       - name: Use rankmirrors to filter the fastest mirrors that support HTTPS
         shell: curl -s "https://archlinux.org/mirrorlist/?country=DE&protocol=https&use_mirror_status=on" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > /etc/pacman.d/mirrorlist
+        args:
+          warn: false
       - name: Run pacstrap
         command: pacstrap /mnt base base-devel
     
@@ -218,13 +220,13 @@
       - name: Generate adjtime file
         command: arch-chroot /mnt hwclock --systohc
       - name: Configure locale.gen
-          lineinfile:
-            dest: /mnt/etc/locale.gen
-            regexp: "{{ item.regex }}"
-            line: "{{ item.line }}"
-            loop:
-              - { regex: de_DE\.UTF-8 UTF-8, line: de_DE.UTF-8 UTF-8 }
-              - { regex: de_DE ISO-8859-1, line: de_DE ISO-8859-1 }
+        lineinfile:
+          dest: /mnt/etc/locale.gen
+          regexp: "{{ item.regex }}"
+          line: "{{ item.line }}"
+        loop:
+          - { regex: de_DE\.UTF-8 UTF-8, line: de_DE.UTF-8 UTF-8 }
+          - { regex: de_DE ISO-8859-1, line: de_DE ISO-8859-1 }
       - name: Create locale.conf
         copy:
           content: "LANG=de_DE.UTF-8"
@@ -294,7 +296,10 @@
           dest: /mnt/etc/sudoers.d/wheel
           validate: /usr/sbin/visudo --check --file=%s
       - name: Create scripts directory
-        shell: mkdir -p /mnt/home/{{ user_name }}/.scripts
+        file:
+          path: /mnt/home/{{ user_name }}/.scripts
+          state: directory
+          mode: 0755
       - name: copy ~/.scripts/update.sh
         copy:
           src: ./files/update.sh
@@ -432,11 +437,20 @@
       - name: Create BTRFS OLDSTABLE Snapshot of root /
         command: arch-chroot /mnt btrfs sub snap / /.snapshots/OLDSTABLE
       - name: Adapt /etc/fstab of TESTING snapshot
-        command: sed -i 's/\/@,/@snapshots\/TESTING,/g' /mnt/.snapshots/TESTING/etc/fstab
+        replace:
+          path: /mnt/.snapshots/TESTING/etc/fstab
+          regexp: '\/@,'
+          replace: '@snapshots/TESTING,'
       - name: Adapt /etc/fstab of STABLE snapshot
-        command: sed -i 's/\/@,/@snapshots\/STABLE,/g' /mnt/.snapshots/STABLE/etc/fstab
+        replace:
+          path: /mnt/.snapshots/STABLE/etc/fstab
+          regexp: '\/@,'
+          replace: '@snapshots/STABLE,'
       - name: Adapt /etc/fstab of OLDSTABLE snapshot
-        command: sed -i 's/\/@,/@snapshots\/OLDSTABLE,/g' /mnt/.snapshots/OLDSTABLE/etc/fstab
+        replace:
+          path: /mnt/.snapshots/OLDSTABLE/etc/fstab
+          regexp: '\/@,'
+          replace: '@snapshots/OLDSTABLE,'
 
   ### Reboot ###############################################################################################################
   - name: Reboot
