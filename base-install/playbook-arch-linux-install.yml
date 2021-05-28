@@ -31,55 +31,78 @@
   ### Setup Hard Disk Drive (Partitions, Filesystems, Encryption, Mountpoints)#############################################
   - name: Setup Hard Disk Drive (Partitions, Filesystems, Encryption)
     block:
-      - name: Wipe install drive and all its partitions
-        command: find /dev -wholename "{{ install_drive }}*" -exec wipefs --force --all {} \;
+      
+      - name: Define first hard disk
+        set_fact: 
+          install_drive: "{{ ansible_facts['devices']| first}}"
+    
+      - name: Define first hard disk device
+        set_fact: 
+          install_drive_device: "/dev/{{ install_drive }}"
+
+      - name: Read hard disk information 
+        parted: "device={{ install_drive_device}} unit=MiB"
+        register: hdd_info
+
+      - name: Remove all partitions from disk
+        parted:
+          device: "{{ install_drive_device }}"
+          number: "{{ item.num }}"
+          state: absent
+        with_items:
+          - "{{ hdd_info.partitions }}"
+
       - name: Create boot partition
         parted:
-          device: "{{ install_drive }}"
+          device: "{{ install_drive_device }}"
           label: gpt
           number: 1
           part_end: 250MB
           name: boot
           flags: [boot, esp]
           state: present
+      
+      - name: Define boot partition device name
+        shell: "ls {{ install_drive_device }}*1" 
+        register: boot_partition
+      - set_fact: 
+          boot_partition={{ boot_partition.stdout }}
+
       - name: Create root partition
         parted:
-          device: "{{ install_drive }}"
+          device: "{{ install_drive_device }}"
           label: gpt
           number: 2
           part_start: 250MB
           name: root
           flags: []
-          state: present        
+          state: present
+
+      - name: Define root partition device name
+        shell: "ls {{ install_drive_device }}*2" 
+        register: root_partition
+      - set_fact: 
+          root_partition={{ root_partition.stdout }}
+      
       - name: Destroy existing LUKS volume
         luks_device:
-          device: "{{ install_drive }}{{ root_partition_suffix }}"
+          device: "{{ root_partition }}"
           state: absent
       - name: Create and open LUKS volume
         luks_device:
-          device: "{{ install_drive }}{{ root_partition_suffix }}"
+          device: "{{ root_partition }}"
           passphrase: "{{ luks_passphrase }}"
           name: root
           state: opened
       - name: Get UUID for root LUKS volume
-        command: blkid -s UUID -o value '{{ install_drive }}{{ root_partition_suffix }}'
+        command: blkid -s UUID -o value '{{ root_partition }}'
         register: root_luks_uuid
         changed_when: false
-      - name: Create FAT32 filesystem in boot partition
-        filesystem:
-          dev: "{{ install_drive }}{{ boot_partition_suffix }}"
-          fstype: vfat
-          opts: -F32
-          force: yes
       - name: Create BTRFS filesystem on root volume
         filesystem:
           dev: /dev/mapper/root
           fstype: btrfs
           force: yes
-      - name: Get UUID for boot filesystem
-        command: blkid -s UUID -o value '{{ install_drive }}{{ boot_partition_suffix }}'
-        register: boot_uuid
-        changed_when: false
       - name: Get UUID for root filesystem
         command: blkid -s UUID -o value /dev/mapper/root
         register: root_uuid
@@ -138,6 +161,16 @@
           path: /mnt/btrfs
           state: directory
           mode: "0755"
+      - name: Create FAT32 filesystem in boot partition
+        filesystem:
+          dev: "{{ boot_partition }}"
+          fstype: vfat
+          opts: -F32
+          force: yes
+      - name: Get UUID for boot filesystem
+        command: blkid -s UUID -o value '{{ boot_partition}}'
+        register: boot_uuid
+        changed_when: false
       - name: Mount boot filesystem
         mount:
           path: /mnt/boot
@@ -184,9 +217,9 @@
       - name: Use rankmirrors to filter the fastest mirrors that support HTTPS
         shell: curl -s "https://archlinux.org/mirrorlist/?country=DE&protocol=https&use_mirror_status=on" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > /etc/pacman.d/mirrorlist
         args:
-          warn: false
+          warn: false 
       - name: Run pacstrap
-        command: pacstrap /mnt base base-devel
+        command: pacstrap /mnt base base-devel iptables-nft
     
   ### Install Additional Software Packages via package manager PACMAN ######################################################
   - name: Install Additional Software Packages via package manager PACMAN
@@ -194,7 +227,25 @@
       - name: Install kernel packages
         command: arch-chroot /mnt pacman -S linux linux-firmware mkinitcpio --noconfirm
       - name: Install graphics & gui packages
-        command: arch-chroot /mnt pacman -S xorg-server nvidia lightdm lightdm-gtk-greeter i3-gaps i3status i3lock i3lock dmenu picom --noconfirm
+        command: arch-chroot /mnt pacman -S xorg-server lightdm lightdm-gtk-greeter i3-gaps i3status i3lock i3lock dmenu picom --noconfirm
+      
+      - name: Check Intel graphics card
+        shell: lspci | grep VGA | awk '{print $5}' |grep Intel
+        register: intel
+      - name: Set Intel graphics driver
+        set_fact:
+          graphics_card_driver: xf86-video-intel
+        when: intel.stdout | length > 0
+      - name: Check Nvidia graphics card
+        shell: lspci | grep VGA | awk '{print $5}' |grep NVIDIA
+        register: nvidia
+      - name: Set Nvidia graphics driver
+        set_fact:
+          graphics_card_driver: nvidia
+        when: nvidia.stdout | length > 0
+
+      - name: Install graphics card driver
+        command: arch-chroot /mnt pacman -S {{ graphics_card_driver }} --noconfirm
       - name: Install sound and bluetooth packages
         command: arch-chroot /mnt pacman -S pulseaudio pulseaudio-alsa pulseaudio-bluetooth pavucontrol bluez bluez-utils --noconfirm
       - name: Install wifi packages
@@ -210,7 +261,7 @@
       - name: Install editor packages
         command: arch-chroot /mnt pacman -S nano vim leafpad mupdf texlive-core --noconfirm
       - name: Install vm & container packages
-        command: arch-chroot /mnt pacman -S nano qemu virt-manager docker docker-compose remmina freerdp  --noconfirm
+        command: arch-chroot /mnt pacman -Sy nano qemu virt-manager docker docker-compose remmina freerdp  --noconfirm
   
   ### Configure Time, Clock, Language ######################################################################################
   - name: Configure Time, Clock, Language
@@ -245,26 +296,26 @@
         copy:
           content: |
             [Match]
-            Name={{ wired_interface }}
+            Name={{ ansible_facts['default_ipv4']['interface'] }}
             [Network]
             DHCP=yes
-            DNS={{ dns_server }}
+            DNS={{ ansible_facts['default_ipv4']['gateway'] }}
             #[Link]
             #MTUBytes=1480
             # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
           dest: /mnt/etc/systemd/network/20-wired.network
-      - name: Create systemd-networkd profile for wireless connection
-        copy:
-          content: |
-            [Match]
-            Name={{ wireless_interface }}
-            [Network]
-            DHCP=yes
-            DNS={{ dns_server }}
-            #[Link]
-            #MTUBytes=1480
-            # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
-          dest: /mnt/etc/systemd/network/21-wireless.network
+      #- name: Create systemd-networkd profile for wireless connection
+      #  copy:
+      #    content: |
+      #      [Match]
+      #      Name={{ wireless_interface }}
+      #      [Network]
+      #      DHCP=yes
+      #      DNS={{ ansible_facts['default_ipv4']['gateway'] }}
+      #      #[Link]
+      #      #MTUBytes=1480
+      #      # IPv6 traffic is tunneled over IPv4, which eats 20 bytes of the MTU.
+      #    dest: /mnt/etc/systemd/network/21-wireless.network
 
   ### Setup User Account ###################################################################################################
   - name: Setup User Account
