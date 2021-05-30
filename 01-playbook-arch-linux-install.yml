@@ -503,11 +503,79 @@
           regexp: '\/@,'
           replace: '@snapshots/OLDSTABLE,'
 
+
+ ### Reboot ###############################################################################################################
+  #- name: Set keyboard layout
+  #  shell: arch-chroot /mnt localectl set-x11-keymap de
+
+  - name: Set keyboard layout (https://wiki.archlinux.de/title/Arch_Linux_auf_Deutsch_stellen)
+    shell: |
+        arch-chroot /mnt echo LANG=de_DE.UTF-8 > /etc/locale.conf
+        arch-chroot /mnt echo KEYMAP=de-latin1-nodeadkeys > /etc/vconsole.conf
+        arch-chroot /mnt rm /etc/localtime
+        arch-chroot /mnt ln -s /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+
+  - name: Create user account aur_builder
+    command: arch-chroot /mnt useradd aur_builder
+
+  - name: Create sudoers config file
+    file:
+      path: /mnt/etc/sudoers.d/11-install-aur_builder
+      state: touch
+
+  - name: Allow aur_builder to run sudo on pacman without PW
+    lineinfile:
+      path: /mnt/etc/sudoers.d/11-install-aur_builder
+      state: present
+      line: "aur_builder ALL=(ALL) NOPASSWD: /usr/bin/pacman"
+      validate: /usr/sbin/visudo -cf %s
+      create: yes
+  
+  - name: Create i3 config directory
+    shell: mkdir -p /mnt/home/{{ user_name }}/.config/i3
+
+  - name: copy ~/.config/i3/config
+    copy:
+      src: ./files/i3config
+      dest: /mnt/home/{{ user_name }}/.config/i3/config
+      owner: "1000"
+      group: "1000"
+      mode: 0644
+
+  - name: Create i3status config directory
+    shell: mkdir -p /mnt/home/{{ user_name }}/.config/i3status  
+
+  - name: copy ~/.config/i3status/i3status.conf
+    copy:
+      src: ./files/i3status.conf
+      dest: /mnt/home/{{ user_name }}/.config/i3status/i3status.conf
+      owner: "1000"
+      group: "1000"
+      mode: 0644
+  
+  - name: copy background picture
+    copy:
+      src: ./files/wallpaper.jpg
+      dest: /mnt/home/{{ user_name }}/.config/wallpaper.jpg
+      owner: "1000"
+      group: "1000"
+      mode: 0644
+
+  - name: copy ~/.Xresources
+    copy:
+      src: ./files/Xresources
+      dest: /mnt/home/{{ user_name }}/.Xresources
+      owner: "1000"
+      group: "1000"
+      mode: 0644
+
+ 
+
   ### Reboot ###############################################################################################################
-  - name: Reboot
-    block:
-      - name: Reboot
-        reboot:
-          connect_timeout: 1
-          reboot_timeout: 1
-        failed_when: false
+  #- name: Reboot
+  #  block:
+  #    - name: Reboot
+  #      reboot:
+  #        connect_timeout: 1
+  #        reboot_timeout: 1
+  #      failed_when: false

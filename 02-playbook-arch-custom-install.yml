@@ -1,0 +1,40 @@
+---
+- hosts: all
+
+  vars_prompt:
+    - name: user_name
+      prompt: "Enter your linux user name"
+      private: no
+
+  tasks:
+   
+
+    - name: Git clone yay
+      git:
+        repo: https://aur.archlinux.org/yay.git
+        dest: ~/yay
+        version: master
+        accept_hostkey: yes
+      become: yes
+      become_user: aur_builder
+
+    - name: Install yay
+      shell: makepkg -si --noconfirm
+      become: yes
+      become_user: aur_builder
+      args:
+        chdir: ~/yay
+
+    - name: Install visual-studio-code
+      shell: yay -S visual-studio-code-insiders-bin --noconfirm
+      become: yes
+      become_user: aur_builder
+      tags:
+        - yay
+
+    
+
+   
+# 1) Zertifikate
+
+# 2) Scaling
