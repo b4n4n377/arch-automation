@@ -188,13 +188,14 @@ bindsym $mod+r mode "resize"
 # finds out, if available)
 bar {
         status_command i3status -c ~/.config/i3status/i3status.conf
+	font pango:Terminus 14
 }
 
 # New font for windows titles
 font pango:Terminus 14
 
 # Keyboard layout
-exec_always setxbkeymap de
+exec_always setxkbmap de
 
 # Display Wallpaper
 exec_always feh --bg-fill ~/.config/wallpaper.jpg
@@ -222,3 +223,6 @@ for_window [class="discord"] move to workspace $ws3
 
 # for transparency
 exec --no-startup-id picom -f
+
+# HIDPI
+exec --no-startup-id bash ~/.scripts/hidpi.sh

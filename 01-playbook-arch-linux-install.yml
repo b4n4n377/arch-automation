@@ -228,7 +228,6 @@
         command: arch-chroot /mnt pacman -S linux linux-firmware mkinitcpio --noconfirm
       - name: Install graphics & gui packages
         command: arch-chroot /mnt pacman -S xorg-server lightdm lightdm-gtk-greeter i3-gaps i3status i3lock i3lock dmenu picom --noconfirm
-      
       - name: Check Intel graphics card
         shell: lspci | grep VGA | awk '{print $5}' |grep Intel
         register: intel
@@ -243,7 +242,6 @@
         set_fact:
           graphics_card_driver: nvidia
         when: nvidia.stdout | length > 0
-
       - name: Install graphics card driver
         command: arch-chroot /mnt pacman -S {{ graphics_card_driver }} --noconfirm
       - name: Install sound and bluetooth packages
@@ -350,6 +348,8 @@
         file:
           path: /mnt/home/{{ user_name }}/.scripts
           state: directory
+          owner: "1000"
+          group: "1000"
           mode: 0755
       - name: copy ~/.scripts/update.sh
         copy:
@@ -503,26 +503,19 @@
           regexp: '\/@,'
           replace: '@snapshots/OLDSTABLE,'
 
-
- ### Reboot ###############################################################################################################
-  #- name: Set keyboard layout
-  #  shell: arch-chroot /mnt localectl set-x11-keymap de
-
+ ### Refinish ###############################################################################################################
   - name: Set keyboard layout (https://wiki.archlinux.de/title/Arch_Linux_auf_Deutsch_stellen)
     shell: |
         arch-chroot /mnt echo LANG=de_DE.UTF-8 > /etc/locale.conf
         arch-chroot /mnt echo KEYMAP=de-latin1-nodeadkeys > /etc/vconsole.conf
         arch-chroot /mnt rm /etc/localtime
         arch-chroot /mnt ln -s /usr/share/zoneinfo/Europe/Berlin /etc/localtime
-
   - name: Create user account aur_builder
     command: arch-chroot /mnt useradd aur_builder
-
   - name: Create sudoers config file
     file:
       path: /mnt/etc/sudoers.d/11-install-aur_builder
       state: touch
-
   - name: Allow aur_builder to run sudo on pacman without PW
     lineinfile:
       path: /mnt/etc/sudoers.d/11-install-aur_builder
@@ -530,10 +523,20 @@
       line: "aur_builder ALL=(ALL) NOPASSWD: /usr/bin/pacman"
       validate: /usr/sbin/visudo -cf %s
       create: yes
-  
+  - name: Create config directory
+    file:
+      path: /mnt/home/{{ user_name }}/.config
+      state: directory
+      owner: "1000"
+      group: "1000"
+      mode: 0775
   - name: Create i3 config directory
-    shell: mkdir -p /mnt/home/{{ user_name }}/.config/i3
-
+    file:
+      path: /mnt/home/{{ user_name }}/.config/i3
+      state: directory
+      owner: "1000"
+      group: "1000"
+      mode: 0775
   - name: copy ~/.config/i3/config
     copy:
       src: ./files/i3config
@@ -541,10 +544,13 @@
       owner: "1000"
       group: "1000"
       mode: 0644
-
-  - name: Create i3status config directory
-    shell: mkdir -p /mnt/home/{{ user_name }}/.config/i3status  
-
+  - name: Create i3 status directory
+    file:
+      path: /mnt/home/{{ user_name }}/.config/i3status  
+      state: directory
+      owner: "1000"
+      group: "1000"
+      mode: 0775
   - name: copy ~/.config/i3status/i3status.conf
     copy:
       src: ./files/i3status.conf
@@ -552,7 +558,6 @@
       owner: "1000"
       group: "1000"
       mode: 0644
-  
   - name: copy background picture
     copy:
       src: ./files/wallpaper.jpg
@@ -560,16 +565,23 @@
       owner: "1000"
       group: "1000"
       mode: 0644
-
-  - name: copy ~/.Xresources
+  - name: copy ~/.Xdefaults
     copy:
-      src: ./files/Xresources
-      dest: /mnt/home/{{ user_name }}/.Xresources
+      src: ./files/Xdefaults
+      dest: /mnt/home/{{ user_name }}/.Xdefaults
       owner: "1000"
       group: "1000"
       mode: 0644
+  - name: copy ~/.scripts/hidpi.sh
+    copy:
+      src: ./files/hidpi.sh
+      dest: /mnt/home/{{ user_name }}/.scripts/hidpi.sh
+      owner: "1000"
+      group: "1000"
+      mode: 0755
 
- 
+  
+
 
   ### Reboot ###############################################################################################################
   #- name: Reboot

@@ -21,7 +21,7 @@ all:
   archboxS0127912:
     ansible_become: yes
     ansible_ssh_common_args: -o "StrictHostKeyChecking no" -o "UserKnownHostsFile /dev/null"
-    ansible_host: 10.77.77.152
+    ansible_host: 10.77.77.164
     ansible_user: root
     ansible_ssh_pass: archiso
     github_public_key: https://github.com/b4n4n377.keys
